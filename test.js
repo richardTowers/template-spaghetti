@@ -1,3 +1,4 @@
+const fs    = require('fs')
 const index = require('./index')
 
 describe('nunjucksToErb', () => {
@@ -24,5 +25,11 @@ describe('nunjucksToErb', () => {
   it('should emit if statements', () => {
     const result = index.nunjucksToErb('key = {% if true %}Thing{% endif %}')
     expect(result).toEqual('key = <% if true %>Thing<% end %>')
+  })
+
+  it('should compile govukButton', () => {
+    const nunjucksSource = fs.readFileSync(__dirname + '/node_modules/govuk-frontend/components/button/template.njk').toString()
+    const result = index.nunjucksToErb(nunjucksSource)
+    expect(result).toBe('not this')
   })
 })
