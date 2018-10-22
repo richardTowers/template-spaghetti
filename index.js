@@ -1,8 +1,8 @@
 const parser = require('nunjucks/src/parser')
 
-const walk = cb => node => {
+const walk = (cb, node) => {
   const children = node.children || []
-  return [cb(node)].concat(...children.map(c => walk(cb)(c))).join('')
+  return [cb(node)].concat(...children.map(c => walk(cb, c))).join('')
 }
 
 const emitter = node => walk((node) => {
@@ -29,7 +29,7 @@ const emitter = node => walk((node) => {
       console.error(node)
       throw new Error(`Unhandled node type ${node.typename}`)
   }
-})(node)
+}, node)
 const templateDataEmitter = node => `${node.value}`
 const symbolEmitter = node => `<%= ${node.value} %>`
 const lookupValEmitter = node => `<%= ${node.target.value}.${node.val.value} %>`
