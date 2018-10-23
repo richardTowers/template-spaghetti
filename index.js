@@ -1,76 +1,141 @@
 const parser = require('nunjucks/src/parser')
 
-// mode = 'plain'||'output'||'code'
-const emitter = (mode, node) => {
-  switch (node.typename) {
-    case 'Root':
-    case 'NodeList':
-      if (node.children) {
-        return node.children.map(child => emitter(mode, child)).join('')
-      } else {
-        return ''
-      }
-    case 'Output':
-      return outputEmitter(mode, node)
-    case 'TemplateData':
-      return templateDataEmitter(mode, node)
-    case 'Symbol':
-      return symbolEmitter(mode, node)
-    case 'LookupVal':
-      return lookupValEmitter(mode, node)
-    case 'FunCall':
-      if (node.args.children.length) {
-        throw new Error('Function calls with arguments are not supported yet')
-      }
-      return funCallEmitter(mode, node)
-    case 'If':
-      return ifEmitter(mode, node)
-    case 'Set':
-      return setEmitter(mode, node)
-    case 'Filter':
-      return filterEmitter(mode, node)
-    case 'Capture':
-      return captureEmitter(mode, node)
-    case 'Compare':
-      return compareEmitter(mode, node)
-    case 'InlineIf':
-      return inlineIfEmitter(mode, node)
-    case 'Literal':
-      return literalEmitter(mode, node)
-    default:
-      console.error(node)
-      throw new Error(`Unhandled node type ${node.typename}`)
+const emitForNodeType = typename => {
+  return {
+    Root: rootEmitter,
+    NodeList: nodeListEmitter,
+    Output: outputEmitter,
+    TemplateData: templateDataEmitter,
+    Symbol: symbolEmitter,
+    LookupVal: lookupValEmitter,
+    If: ifEmitter,
+    Set: setEmitter,
+    Filter: filterEmitter,
+    Capture: captureEmitter,
+    For: forEmitter,
+    Array: arrayEmitter,
+    Compare: compareEmitter,
+    InlineIf: inlineIfEmitter,
+    Literal: literalEmitter
+  }[typename]
+}
+
+const emit = node => {
+  const _emit = emitForNodeType(node.typename)
+  if (!_emit) {
+    console.error(node)
+    throw new Error(`Unhandled node type ${node.typename}`)
   }
+  return _emit(node)
 }
 
 const single = arr => {
-  if(arr.length === 1) {
+  if (arr.length === 1) {
     return arr[0]
   } else {
-    throw new Error(`Expected to find exactly one element, but found ${arr.length}`)
+    throw new Error(
+      `Expected to find exactly one element, but found ${arr.length}`
+    )
   }
 }
-const startOutputTag      = mode => mode !== 'plain' ? '' : '<%= '
-const endOutputTag        = mode => mode !== 'plain' ? '' : ' %>'
-const startCodeTag        = mode => mode !== 'plain' ? '' : '<% '
-const endCodeTag          = mode => mode !== 'plain' ? '' : ' %>'
-const outputEmitter       = (mode, node) => `${node.children.map(child => emitter(mode, child))}`
-const templateDataEmitter = (mode, node) => `${node.value}`
-const symbolEmitter       = (mode, node) => `${startOutputTag(mode)}${node.value}${endOutputTag(mode)}`
-const lookupValEmitter    = (mode, node) => `${startOutputTag(mode)}${emitter('output', node.target)}.${emitter('output', node.val)}${endOutputTag(mode)}`
-const funCallEmitter      = (mode, node) => `${startOutputTag(mode)}${emitter('output', node.name.target)}.${emitter('output', node.name.val)}()${endOutputTag(mode)}`
-const ifEmitter           = (mode, node) => `${startCodeTag(mode)}if ${emitter('code', node.cond)}${endCodeTag(mode)}${emitter('plain', node.body)}<% end %>`
-const inlineIfEmitter     = (mode, node) => `${startOutputTag(mode)}${emitter('output', node.cond)} ? ${emitter('output', node.body)} : ${emitter('output', node.else_)}${endOutputTag(mode)}`
-const setEmitter          = (mode, node) => `${startCodeTag(mode)}${emitter('code', single(node.targets))} = ${emitter('code', node.value || node.body)}${endCodeTag(mode)}`
-const filterEmitter       = (mode, node) => `TODO(filter)`
-const captureEmitter      = (mode, node) => `TODO(capture)`
-const compareEmitter      = (mode, ndoe) => `TODO(compare)`
-const literalEmitter      = (mode, node) => `${node.value}`
+function nodeListEmitter(node) {
+  if (node.children) {
+    return node.children.map(child => emit(child)).join('')
+  } else {
+    return ''
+  }
+}
+
+function rootEmitter(node) {
+  return nodeListEmitter(node)
+}
+
+function outputEmitter(node) {
+  return node.children.map(child => {
+    const out = emit(child)
+    if (child.typename === 'TemplateData') {
+      return out
+    }
+    return `<%= ${out} %>`
+  })
+}
+
+function templateDataEmitter(node) {
+  return `${node.value}`
+}
+
+function symbolEmitter(node) {
+  return `${node.value}`
+}
+
+function lookupValEmitter(node) {
+  return `${emit(node.target)}[${emit(node.val)}]`
+}
+
+function ifEmitter(node) {
+  return `<% if ${emit(node.cond)} %>${emit(node.body)}<% end %>`
+}
+
+function inlineIfEmitter(node) {
+  return `${emit(node.cond)} ? ${emit(node.body)} : ${emit(node.else_)}`
+}
+
+function setEmitter(node) {
+  if (node.value) {
+    return `<% ${emit(single(node.targets))} = ${emit(
+      node.value || node.body
+    )} %>`
+  }
+  return `<% template = <<EOTEMPLATE
+${emit(node.body).replace(/%>/g, '%%>')}
+EOTEMPLATE
+%>
+<% ${emit(
+    single(node.targets)
+  )} = ERB.new(template, nil, nil, 'erbout_inner').result(binding) %>`
+}
+
+function filterMap(filter) {
+  switch (filter) {
+    case 'lower':
+      return 'downcase'
+    case 'safe':
+      return 'to_s' // TODO bad idea lol
+    default:
+      throw new Error(`Unrecognised filter ${filter}`)
+  }
+}
+
+function filterEmitter(node) {
+  return `${emit(node.args)}.${filterMap(node.name.value)}`
+}
+
+function captureEmitter(node) {
+  return `${emit(node.body)}` // TODO this probably won't work
+}
+
+function forEmitter(node) {
+  return `<% ${emit(node.arr)}.each do |${emit(node.name)}| %>${emit(node.body)}<% end %>`
+}
+
+function arrayEmitter(node) {
+  return node.children.map(child => emit(child)).join(',')
+}
+
+function compareEmitter(node) {
+  return `${emit(node.expr)} ${node.ops[0].type} ${emit(node.ops[0].expr)}`
+}
+
+function literalEmitter(node) {
+  if (/^true|false|[0-9]+$/.test(node.value)) {
+    return node.value
+  }
+  return `'${node.value}'`
+}
 
 module.exports = {
   nunjucksToErb: njkInput => {
     const ast = parser.parse(njkInput)
-    return emitter('plain', ast)
+    return emit(ast)
   }
 }
-
