@@ -111,7 +111,7 @@ function filterEmitter(node) {
 }
 
 function captureEmitter(node) {
-  return `${emit(node.body)}` // TODO this probably won't work
+  return emit(node.body)
 }
 
 function forEmitter(node) {
