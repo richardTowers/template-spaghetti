@@ -1,8 +1,6 @@
-import { nunjucksNode } from './types'
-
-export function emitWithPlaceholders(parsedNjk: nunjucksNode): {text: string, placeholders: nunjucksNode[]} {
+export function emitWithPlaceholders(parsedNjk: any): {text: string, placeholders: any[]} {
   const placeholders = []
-  function convertNunjucksToStringWithPlaceholders(input: nunjucksNode) {
+  function convertNunjucksToStringWithPlaceholders(input: any) {
     switch (input.typename) {
       case 'Root':
         return input.children.map(convertNunjucksToStringWithPlaceholders).join('')
